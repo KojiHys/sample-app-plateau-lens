@@ -1,0 +1,5 @@
+# git-secrets scans its own AWS regex declarations. Allow only those declaration lines.
+(^|.*:)scripts/scan-secrets\.sh:[0-9]+:.*_PATTERN=
+
+# Test fixtures use non-secret 12-digit account IDs to validate CDK and Lambda behavior.
+(^|.*:)test/[^:]+:[0-9]+:.*[0-9]{12}

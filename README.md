@@ -95,6 +95,19 @@ npm run synth -- -c budgetEmail=alerts@example.com -c budgetAmount=10
 
 E2EはPLATEAU配信サービスへ接続します。外部サービス停止時は単体テストとビルドを先に確認してください。
 
+## push前のシークレット検査
+
+Gitleaksとgit-secretsを併用して、Git履歴、ステージ済み変更、追跡・未追跡ファイルを検査します。
+
+```bash
+brew install gitleaks git-secrets
+npm run secrets:scan
+```
+
+`git-secrets --register-aws`は実行せず、スキャン時だけ`git -c`でAWSの標準パターンと`~/.aws/credentials` providerを渡します。このため、ユーザーまたはリポジトリーのGit設定を変更しません。`.gitallowed`はスキャンスクリプト自身の正規表現宣言と、`test/`内の架空12桁Account IDだけを除外します。実データを除外登録しないでください。
+
+検出が1件でもある場合、コマンドは終了コード1で失敗します。検出値を削除または失効させ、必要ならGit履歴からも除去してから再実行してください。結果には`--redact=100`を指定し、Gitleaksが値そのものを表示しないようにしています。
+
 ## AWSへデプロイする前の確認
 
 このスタックは短期サンプル用です。必ず非本番アカウントと最小権限の認証情報を使ってください。

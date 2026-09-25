@@ -9,6 +9,7 @@
   "scripts": {
     "assets:sync": "node scripts/sync-cesium-assets.mjs",
     "fallback:fetch": "node scripts/fetch-fallback-tiles.mjs",
+    "secrets:scan": "bash scripts/scan-secrets.sh",
     "predev": "npm run assets:sync",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
