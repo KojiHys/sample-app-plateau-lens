@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.cache/
+web/public/cesium/
+cdk.out/
+coverage/
+test-results/
+playwright-report/
+semantic-review/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log

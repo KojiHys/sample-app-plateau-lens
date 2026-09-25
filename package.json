@@ -1,0 +1,42 @@
+{
+  "name": "sample-app-plateau-lens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <26"
+  },
+  "scripts": {
+    "assets:sync": "node scripts/sync-cesium-assets.mjs",
+    "fallback:fetch": "node scripts/fetch-fallback-tiles.mjs",
+    "predev": "npm run assets:sync",
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "prebuild": "npm run assets:sync",
+    "build": "npm run typecheck && vite build",
+    "synth": "npm run build && cdk synth",
+    "deploy": "node scripts/deploy.mjs",
+    "destroy": "cdk destroy",
+    "verify": "npm run test && npm run build && cdk synth"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1139.0",
+    "@aws-sdk/lib-dynamodb": "^3.1139.0",
+    "cesium": "^1.145.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/aws-lambda": "^8.10.163",
+    "@types/node": "^25.0.0",
+    "aws-cdk": "^2.1143.0",
+    "aws-cdk-lib": "^2.270.0",
+    "constructs": "^10.8.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^4.1.11"
+  }
+}
