@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root="$(git rev-parse --show-toplevel)"
+git_defender_hook="/usr/local/amazon/var/git-defender/hooks/pre-push"
+
+if [[ ! -x "${git_defender_hook}" ]]; then
+  printf 'Required Git Defender pre-push hook is unavailable: %s\n' "${git_defender_hook}" >&2
+  exit 1
+fi
+
+"${git_defender_hook}" "$@"
+"${repository_root}/scripts/scan-secrets.sh"
