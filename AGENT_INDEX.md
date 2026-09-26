@@ -53,7 +53,7 @@
 
 ## AWS実環境検証実績
 
-- CloudFormation stack: `UPDATE_COMPLETE`（`us-east-1`）
+- CloudFormation stack: `UPDATE_COMPLETE`（`us-east-1`、2026-09-26に3D表示のWeb資産を再デプロイ）
 - CloudFront: `Deployed`。ルートとSPA routeは200、欠損静的ファイル・欠損タイルは403
 - 実ブラウザ診断: preflight / PLATEAU表示とも成功、出典表示を確認
 - S3: Web・tilesともpublic access block、SSE-S3、直接アクセス403、CloudFront OAC経由
@@ -80,10 +80,11 @@
 12. **地形はCesium ionを使わない**。国土地理院の標高タイルに千代田区のジオイド高36.9 mを加えて楕円体高に合わせる。Cesium ionの無料プランは企業・政府用途に使えないため不採用。ionの地形は有償ライセンス確保後に別PRで検討する
 13. **3D表示設定はURL状態と保存ビューに含めない**。v1スキーマと既存データの互換性を保つ
 
-## 3D表示の保留事項
+## 3D表示のデプロイ（2026-09-26）
 
-1. 標高タイルの自前配信（専用S3へのミラー）。AWSへの書き込みと有効化フラグが必要なため別PRで扱う
-2. デプロイ環境（CloudFront）での3D表示の実機確認。本変更はWeb資産だけで、CDKの差分はない
+- PR #4をWeb資産だけの再デプロイで反映した。`cdk diff`はWebDeploymentのzip差し替えのみで、デプロイ後は差分なし
+- CloudFront上で、preflight合格、ion非依存、航空写真、国土地理院の標高タイル取得、初期の斜め俯瞰を実ブラウザで確認した
+- 標高タイルの自前配信（S3ミラー）は行わない（2026-09-26にユーザーが不要と判断）。国土地理院から直接取得し、失敗時は平面で表示する
 
 ## 開発完了時の保留事項
 

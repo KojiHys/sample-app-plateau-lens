@@ -85,6 +85,13 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 | セキュリティ検査 | `npm audit`脆弱性0件。Gitleaksとgit-secretsでGit全履歴・作業ツリーとも検出0件 |
 | フォールバックデータ | `.cache/fallback-tiles/`の635ファイルを専用S3へ同期し、CloudFront invalidation後にURLを有効化。root/child/b3dmの200を確認 |
 
+### 3D表示の再デプロイ（2026-09-26）
+
+- Web資産だけを再デプロイした（WebDeploymentのzip差し替え、CloudFront `/*` invalidation）。Lambda、IAM、Cognito、API、DynamoDB、Budgetは変更なし。デプロイ後の`cdk diff`は差分なし
+- CloudFrontで新しいJS、`runtime-config.json`（fallback有効）、SPA route、`/tiles/tileset.json`の200を確認
+- 実ブラウザでpreflight合格、ion非依存、航空写真と標高タイルの取得、初期の斜め俯瞰を確認
+- 標高タイルのS3ミラーは不要と判断した。国土地理院から直接取得し、失敗時は平面で表示する
+
 ### 実AWS検証済み（2026-09-25）
 
 - CloudFormation stackは`us-east-1`で`UPDATE_COMPLETE`。CDK bootstrap version 32
