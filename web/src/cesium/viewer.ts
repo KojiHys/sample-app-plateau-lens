@@ -1,4 +1,5 @@
 import {
+  BoundingSphere,
   Cartesian2,
   Cartesian3,
   Cartographic,
@@ -7,6 +8,7 @@ import {
   Math as CesiumMath,
   Color,
   EllipsoidTerrainProvider,
+  HeadingPitchRange,
   ImageryLayer,
   Ion,
   JulianDate,
@@ -61,8 +63,31 @@ export function createIonIndependentViewer(container: HTMLElement): Viewer {
   viewer.scene.globe.baseColor = Color.fromCssColorString("#122338");
   viewer.clock.shouldAnimate = false;
   viewer.clock.currentTime = daytimeInTokyo();
-  viewer.camera.setView({ destination: INITIAL_VIEW_BOUNDS });
+  viewObliquely(viewer, Rectangle.center(INITIAL_VIEW_BOUNDS), INITIAL_OBLIQUE_RANGE_METERS, 0);
   return viewer;
+}
+
+/**
+ * Initial 3D view: looking north over Kanda/Marunouchi with a 30° depression
+ * angle (pitch −30°). The range keeps roughly the same area in view as the
+ * former top-down view of INITIAL_VIEW_BOUNDS.
+ */
+export const INITIAL_OBLIQUE_PITCH = CesiumMath.toRadians(-30);
+const INITIAL_OBLIQUE_RANGE_METERS = 1_400;
+// Approximate ground ellipsoidal height around Kanda (elevation + geoid height).
+const FOCUS_HEIGHT_METERS = 42;
+
+function viewObliquely(
+  viewer: Viewer,
+  focus: Cartographic,
+  rangeMeters: number,
+  durationSeconds: number,
+): void {
+  const target = Cartesian3.fromRadians(focus.longitude, focus.latitude, FOCUS_HEIGHT_METERS);
+  viewer.camera.flyToBoundingSphere(new BoundingSphere(target, 1), {
+    duration: durationSeconds,
+    offset: new HeadingPitchRange(0, INITIAL_OBLIQUE_PITCH, rangeMeters),
+  });
 }
 
 const MIN_VIEW_HEIGHT_METERS = 300;
@@ -94,10 +119,15 @@ export function morphSceneMode(viewer: Viewer, mode: "2d" | "3d", onComplete: ()
 
   const removeListener = scene.morphComplete.addEventListener(() => {
     removeListener();
-    camera.setView({
-      destination: Cartesian3.fromRadians(focus.longitude, focus.latitude, height),
-      orientation: { heading: 0, pitch: -CesiumMath.PI_OVER_TWO, roll: 0 },
-    });
+    if (mode === "3d") {
+      // Return to the same oblique angle as the initial view.
+      viewObliquely(viewer, focus, height * 1.5, 0);
+    } else {
+      camera.setView({
+        destination: Cartesian3.fromRadians(focus.longitude, focus.latitude, height),
+        orientation: { heading: 0, pitch: -CesiumMath.PI_OVER_TWO, roll: 0 },
+      });
+    }
     onComplete();
   });
   if (mode === "2d") {
@@ -110,7 +140,16 @@ export function morphSceneMode(viewer: Viewer, mode: "2d" | "3d", onComplete: ()
 /** Moves the camera back to the initial view. Filters and display settings are untouched. */
 export function resetCameraView(viewer: Viewer): void {
   viewer.camera.cancelFlight();
-  viewer.camera.flyTo({ destination: INITIAL_VIEW_BOUNDS, duration: CAMERA_RESET_SECONDS });
+  if (viewer.scene.mode === SceneMode.SCENE2D) {
+    viewer.camera.flyTo({ destination: INITIAL_VIEW_BOUNDS, duration: CAMERA_RESET_SECONDS });
+    return;
+  }
+  viewObliquely(
+    viewer,
+    Rectangle.center(INITIAL_VIEW_BOUNDS),
+    INITIAL_OBLIQUE_RANGE_METERS,
+    CAMERA_RESET_SECONDS,
+  );
 }
 
 export function createOrthoImageryLayer(urlTemplate: string): ImageryLayer {

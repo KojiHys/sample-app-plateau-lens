@@ -49,15 +49,24 @@ test("Tier 1 loads PLATEAU without ion and restores the preset URL state", async
   await expect(page.locator('input[name="color-mode"][value="floodDepth"]')).toBeChecked();
 });
 
-function decodeCamera(url: string): { latitudeDegrees: number; longitudeDegrees: number } {
+interface DecodedCamera {
+  latitudeDegrees: number;
+  longitudeDegrees: number;
+  pitch: number;
+}
+
+function decodeCamera(url: string): DecodedCamera {
   const state = new URL(url).searchParams.get("state");
   if (!state) {
     throw new Error("state parameter is missing");
   }
   const payload = JSON.parse(Buffer.from(state, "base64url").toString("utf8")) as {
-    camera: { destination: { latitudeDegrees: number; longitudeDegrees: number } };
+    camera: {
+      destination: { latitudeDegrees: number; longitudeDegrees: number };
+      orientation: { pitch: number };
+    };
   };
-  return payload.camera.destination;
+  return { ...payload.camera.destination, pitch: payload.camera.orientation.pitch };
 }
 
 test("3D display settings load imagery, terrain, textures, 2D mode, and reset the view", async ({
@@ -89,6 +98,12 @@ test("3D display settings load imagery, terrain, textures, 2D mode, and reset th
   await expect(page.locator("#toggle-textures")).not.toBeChecked();
   await expect(page.locator("#toggle-lighting")).not.toBeChecked();
   await expect(page.getByText("国土地理院の標高タイル")).toBeVisible();
+
+  // The initial 3D view looks north at a 30° depression angle, from south of the focus.
+  const initialCamera = decodeCamera(page.url());
+  expect(initialCamera.pitch).toBeCloseTo(-Math.PI / 6, 2);
+  expect(initialCamera.longitudeDegrees).toBeCloseTo(139.762, 3);
+  expect(initialCamera.latitudeDegrees).toBeLessThan(35.6985);
 
   await expect.poll(() => hosts.has("cyberjapandata.gsi.go.jp")).toBe(true);
   await expect
