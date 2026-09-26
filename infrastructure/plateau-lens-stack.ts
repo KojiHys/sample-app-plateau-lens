@@ -39,6 +39,12 @@ const FUNCTION_NAME = `${APPLICATION_NAME}-views-api`;
 const API_NAME = `${APPLICATION_NAME}-api`;
 const WRITE_THROTTLE_BURST_LIMIT = 5;
 const WRITE_THROTTLE_RATE_LIMIT = 2;
+
+type CloudFormationRouteSettings = {
+  readonly ThrottlingBurstLimit: number;
+  readonly ThrottlingRateLimit: number;
+};
+
 const SOURCE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PROJECT_DIRECTORY = resolve(SOURCE_DIRECTORY, "..");
 const DEFAULT_WEB_ASSET_PATH = resolve(PROJECT_DIRECTORY, "dist");
@@ -257,6 +263,20 @@ export class PlateauLensStack extends Stack {
       },
       managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
     });
+    const cfnUserPoolDomain = userPoolDomain.node.defaultChild;
+    if (!(cfnUserPoolDomain instanceof cognito.CfnUserPoolDomain)) {
+      throw new Error("The managed login domain is not a CfnUserPoolDomain");
+    }
+    const managedLoginBranding = new cognito.CfnManagedLoginBranding(
+      this,
+      "ManagedLoginBranding",
+      {
+        userPoolId: userPool.userPoolId,
+        clientId: userPoolClient.userPoolClientId,
+        useCognitoProvidedValues: true,
+      },
+    );
+    managedLoginBranding.addResourceDependency(cfnUserPoolDomain);
     const cognitoDomainUrl = userPoolDomain.baseUrl();
 
     const functionLogGroup = new logs.LogGroup(this, "ViewsFunctionLogGroup", {
@@ -361,23 +381,25 @@ export class PlateauLensStack extends Stack {
       },
     );
 
-    httpApi.addRoutes({
-      path: "/views",
-      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET],
-      integration: viewsIntegration,
-      authorizer: userPoolAuthorizer,
-    });
-    httpApi.addRoutes({
-      path: "/views/{viewId}",
-      methods: [apigwv2.HttpMethod.DELETE],
-      integration: viewsIntegration,
-      authorizer: userPoolAuthorizer,
-    });
-    httpApi.addRoutes({
-      path: "/views/{viewId}",
-      methods: [apigwv2.HttpMethod.GET],
-      integration: viewsIntegration,
-    });
+    const routes = [
+      ...httpApi.addRoutes({
+        path: "/views",
+        methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET],
+        integration: viewsIntegration,
+        authorizer: userPoolAuthorizer,
+      }),
+      ...httpApi.addRoutes({
+        path: "/views/{viewId}",
+        methods: [apigwv2.HttpMethod.DELETE],
+        integration: viewsIntegration,
+        authorizer: userPoolAuthorizer,
+      }),
+      ...httpApi.addRoutes({
+        path: "/views/{viewId}",
+        methods: [apigwv2.HttpMethod.GET],
+        integration: viewsIntegration,
+      }),
+    ];
 
     const defaultStage = httpApi.defaultStage;
     if (defaultStage === undefined) {
@@ -387,18 +409,29 @@ export class PlateauLensStack extends Stack {
     if (!(cfnStage instanceof apigwv2.CfnStage)) {
       throw new Error("The HTTP API default stage is not a CfnStage");
     }
-    cfnStage.routeSettings = {
+    const routeSettings = {
       "POST /views": {
-        throttlingBurstLimit: WRITE_THROTTLE_BURST_LIMIT,
-        throttlingRateLimit: WRITE_THROTTLE_RATE_LIMIT,
+        ThrottlingBurstLimit: WRITE_THROTTLE_BURST_LIMIT,
+        ThrottlingRateLimit: WRITE_THROTTLE_RATE_LIMIT,
       },
       "DELETE /views/{viewId}": {
-        throttlingBurstLimit: WRITE_THROTTLE_BURST_LIMIT,
-        throttlingRateLimit: WRITE_THROTTLE_RATE_LIMIT,
+        ThrottlingBurstLimit: WRITE_THROTTLE_BURST_LIMIT,
+        ThrottlingRateLimit: WRITE_THROTTLE_RATE_LIMIT,
       },
-    } satisfies Record<string, apigwv2.CfnStage.RouteSettingsProperty>;
+    } satisfies Record<string, CloudFormationRouteSettings>;
+    cfnStage.routeSettings = routeSettings;
 
-    new s3deploy.BucketDeployment(this, "WebDeployment", {
+    for (const route of routes) {
+      const cfnRoute = route.node.defaultChild;
+      if (!(cfnRoute instanceof apigwv2.CfnRoute)) {
+        throw new Error(`The HTTP API route ${route.node.path} is not a CfnRoute`);
+      }
+      if (cfnRoute.routeKey in routeSettings) {
+        cfnStage.addResourceDependency(cfnRoute);
+      }
+    }
+
+    const webDeployment = new s3deploy.BucketDeployment(this, "WebDeployment", {
       sources: [
         s3deploy.Source.asset(
           props?.webAssetPath ?? DEFAULT_WEB_ASSET_PATH,
@@ -423,6 +456,7 @@ export class PlateauLensStack extends Stack {
       prune: true,
       retainOnDelete: false,
     });
+    webDeployment.node.addDependency(cfnStage, managedLoginBranding);
 
     if (context.budgetEmail === undefined) {
       Annotations.of(this).addWarningV2(

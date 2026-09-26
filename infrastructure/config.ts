@@ -1,7 +1,7 @@
 import type { Construct } from "constructs";
 
 export const APPLICATION_NAME = "sample-app-plateau-lens";
-export const APPLICATION_REGION = "ap-northeast-1";
+export const APPLICATION_REGION = "us-east-1";
 export const DEFAULT_BUDGET_AMOUNT_USD = 10;
 export const DEFAULT_TILESET_URL =
   "https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/13101-bldg-lod2-notexture-latest/tileset.json";

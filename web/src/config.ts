@@ -13,7 +13,7 @@ const DEFAULT_TILESET_URL =
 
 const defaults: RuntimeConfig = {
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? "",
-  awsRegion: import.meta.env.VITE_AWS_REGION ?? "ap-northeast-1",
+  awsRegion: import.meta.env.VITE_AWS_REGION ?? "us-east-1",
   cognitoDomain: import.meta.env.VITE_COGNITO_DOMAIN ?? "",
   fallbackTilesetUrl: import.meta.env.VITE_FALLBACK_TILESET_URL ?? "",
   redirectUri: import.meta.env.VITE_REDIRECT_URI ?? window.location.origin + "/",

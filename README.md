@@ -60,7 +60,7 @@ graph LR
 - npm 10以降
 - E2Eテスト用のGoogle Chrome
 - AWSへデプロイする場合のみ、AWS CLIとAWS CDK bootstrap済み環境
-- `ap-northeast-1`を利用できる非本番AWSアカウント
+- `us-east-1`を利用できる非本番AWSアカウント
 
 ## ローカルでTier 1を動かす
 
@@ -123,7 +123,7 @@ aws sts get-caller-identity --profile "$AWS_PROFILE"
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --profile "$AWS_PROFILE")
-npx cdk bootstrap "aws://$ACCOUNT_ID/ap-northeast-1" --profile "$AWS_PROFILE"
+npx cdk bootstrap "aws://$ACCOUNT_ID/us-east-1" --profile "$AWS_PROFILE"
 ```
 
 ## デプロイ
@@ -136,7 +136,7 @@ npx cdk bootstrap "aws://$ACCOUNT_ID/ap-northeast-1" --profile "$AWS_PROFILE"
 export BUDGET_EMAIL="alerts@your-company.co.jp" # 実在の通知先へ置換
 export BUDGET_AMOUNT="10"
 export FALLBACK_ENABLED="false"
-export DEV_ORIGIN="http://localhost:5173" # 不要ならunset DEV_ORIGIN
+unset DEV_ORIGIN # 今回はローカルoriginをCORSとCognito callbackへ追加しない
 
 npm run deploy -- --profile "$AWS_PROFILE"
 ```
@@ -158,9 +158,9 @@ npm run deploy -- --profile "$AWS_PROFILE"
 `.env.example`を`.env.local`へコピーし、CloudFormation outputsの値を設定します。
 
 ```dotenv
-VITE_API_BASE_URL=https://API_ID.execute-api.ap-northeast-1.amazonaws.com
-VITE_AWS_REGION=ap-northeast-1
-VITE_COGNITO_DOMAIN=https://COGNITO_DOMAIN.auth.ap-northeast-1.amazoncognito.com
+VITE_API_BASE_URL=https://API_ID.execute-api.us-east-1.amazonaws.com
+VITE_AWS_REGION=us-east-1
+VITE_COGNITO_DOMAIN=https://COGNITO_DOMAIN.auth.us-east-1.amazoncognito.com
 VITE_USER_POOL_CLIENT_ID=CLIENT_ID
 VITE_REDIRECT_URI=http://localhost:5173/
 ```
@@ -177,12 +177,14 @@ aws cognito-idp admin-create-user \
   --username "test-user@example.com" \
   --user-attributes Name=email,Value="test-user@example.com" Name=email_verified,Value=true \
   --profile "$AWS_PROFILE" \
-  --region ap-northeast-1
+  --region us-east-1
 ```
 
 実在する個人のメールアドレスをサンプルデータとして保存しないでください。DynamoDBにはCognitoの`sub`だけを所有者IDとして保存し、メールアドレスは保存しません。
 
 ## 認証・認可設計
+
+Managed Login v2をAPIやCDKで構成する場合、domain設定だけではapp clientのログインページが有効になりません。本スタックは`AWS::Cognito::ManagedLoginBranding`でCognito標準styleをapp clientへ関連付けます。
 
 | API | 認証 | 認可 |
 |---|---|---|
@@ -234,11 +236,11 @@ PLATEAU配信サービスは試験運用でSLAがありません。フォール�
      --query "Stacks[0].Outputs[?OutputKey=='TilesBucketName'].OutputValue | [0]" \
      --output text \
      --profile "$AWS_PROFILE" \
-     --region ap-northeast-1)
+     --region us-east-1)
 
    aws s3 sync ".cache/fallback-tiles/tiles" "s3://$TILES_BUCKET/tiles" \
      --profile "$AWS_PROFILE" \
-     --region ap-northeast-1
+     --region us-east-1
    ```
 
 4. 以前の欠損レスポンスをCloudFront cacheへ残さないよう、`/tiles/*`だけをinvalidationします。これもAWSへの書き込みです。取得したDistribution IDを確認してから実行してください。
@@ -249,7 +251,7 @@ PLATEAU配信サービスは試験運用でSLAがありません。フォール�
      --query "StackResourceSummaries[?ResourceType=='AWS::CloudFront::Distribution'].PhysicalResourceId | [0]" \
      --output text \
      --profile "$AWS_PROFILE" \
-     --region ap-northeast-1)
+     --region us-east-1)
 
    aws cloudfront create-invalidation \
      --distribution-id "$DISTRIBUTION_ID" \

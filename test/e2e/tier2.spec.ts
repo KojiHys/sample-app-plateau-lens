@@ -26,7 +26,7 @@ function idToken(): string {
 function runtimeConfig() {
   return {
     apiBaseUrl: "http://127.0.0.1:5173/mock-api",
-    awsRegion: "ap-northeast-1",
+    awsRegion: "us-east-1",
     cognitoDomain: "https://auth.example.test",
     fallbackTilesetUrl: "",
     redirectUri: "http://127.0.0.1:5173/",
