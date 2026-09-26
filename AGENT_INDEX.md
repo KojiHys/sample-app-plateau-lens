@@ -6,10 +6,10 @@
 
 | 項目 | 内容 |
 |---|---|
-| フェーズ | 実装・ローカル検証完了 → AWSデプロイ待ち |
+| フェーズ | deploy・フォールバック・managed login復旧完了 → 初回ログインと実認証検証待ち |
 | **リポジトリ名** | **`sample-app-plateau-lens`** |
 | 表示名 | PLATEAU Lens |
-| 実装ブランチ | `feature/implement-plateau-lens` |
+| 実装ブランチ | `fix/aws-deployment-readiness` |
 | 開催日 | **2026-09-26（土）** |
 | 実装可能日 | 2026-09-25（金）のみ |
 | 企画確定日 | 2026-09-24 |
@@ -47,7 +47,19 @@
 - `npm audit`: 脆弱性0件
 - Gitleaksとgit-secrets: Git全履歴・作業ツリーとも検出0件
 - 独立レビュー: Blocker / High / Medium 0件、APPROVED
-- フォールバックタイル: `.cache/fallback-tiles/`へ約195 MiBを準備済み。AWS未アップロード
+- フォールバックタイル: `.cache/fallback-tiles/`の635ファイルを専用S3へ同期済み
+
+## AWS実環境検証実績
+
+- CloudFormation stack: `UPDATE_COMPLETE`（`us-east-1`）
+- CloudFront: `Deployed`。ルートとSPA routeは200、欠損静的ファイル・欠損タイルは403
+- 実ブラウザ診断: preflight / PLATEAU表示とも成功、出典表示を確認
+- S3: Web・tilesともpublic access block、SSE-S3、直接アクセス403、CloudFront OAC経由
+- API: CloudFront originだけCORS許可、localhostは不許可、未認証POSTは401
+- Cognito: 自己サインアップ無効、Authorization Code Grant、CloudFront callback/logoutのみ。テストユーザー2名を作成済みで`FORCE_CHANGE_PASSWORD`。Cognito標準Managed Login Brandingを作成し、実ブラウザでemail/password form表示を確認
+- Lambda: Node.js 22でActive。DynamoDBとGSIはActive、PAY_PER_REQUEST
+- Budget: 月額10 USD、実費80%通知、通知先subscriberを確認
+- フォールバック: 専用S3へ635ファイル（203,290,095 bytes）を同期済み。`/tiles/*` invalidation完了、URL有効化済み、root/child/b3dmをCloudFront経由で200確認
 
 ## 確定済みの重要判断（変更時に覆さない）
 
@@ -61,16 +73,18 @@
 8. **全AWSリソースの接頭辞は `sample-app-plateau-lens`** に統一する。公式ロゴ・公式カラーを使わず、サブタイトルに「非公式」を明記する
 9. フォールバックURLは、タイルをS3へ投入してCloudFront invalidationを確認した後だけ有効化する
 10. AWSリソースは短期サンプル用で、`cdk destroy`時に削除する。実行前に対象と影響の明示確認が必要
+11. **デプロイ先リージョンは`us-east-1`**。Budget月額上限は10 USD、`DEV_ORIGIN`は指定しない
 
 ## AWSデプロイ前後の残作業
 
-1. AWS Account ID、環境区分、使用プロファイルと権限を確認する。不明なら本番として扱う
-2. 実在するBudget通知先と月額上限を確定する
-3. 非本番環境へフォールバック無効で初回デプロイする
-4. 準備済みタイルを専用S3へ同期し、`/tiles/*`をinvalidationした後、フォールバックを有効化する
-5. Cognitoテストユーザーを2名作成する
-6. 実環境でPKCE、JWT `sub`、未認証401、別所有者DELETE 403、公開共有、CORS、OAC、GSI収束、フォールバック、Budgetを確認する
-7. ハッカソン後の削除日と担当者を確定し、明示承認後に削除する
+1. 対象devアカウント、`us-east-1`、AdminプロファイルのAccountとRoleは確認済み。CDK bootstrap version 32は完了
+2. Budget通知先と月額上限10 USDは確定・作成・読み取り検証済み。`DEV_ORIGIN`は指定していない
+3. 1回目のRouteSettings表記不備、2回目のStage/Route作成順序競合を修正し、3回目の初回deployは`CREATE_COMPLETE`
+4. フォールバックタイル635ファイルを専用S3へ同期し、`/tiles/*` invalidation後にURLを有効化済み。CloudFront経由のroot/child/b3dmは200
+5. Cognitoテストユーザー2名とCognito標準Managed Login Brandingは作成済み。実ブラウザでlogin form表示を確認
+6. 招待メール到達と初回パスワード変更を確認する
+7. 初回ログイン後、実環境でPKCE、JWT `sub`、別所有者DELETE 403、公開共有、GSI収束、実障害時のフォールバック切り替えを確認する
+8. ハッカソン後の削除日と担当者を確定し、明示承認後に削除する
 
 ## 除外対象
 

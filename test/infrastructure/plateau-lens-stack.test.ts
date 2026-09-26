@@ -29,6 +29,7 @@ const LAMBDA_FIXTURE_PATH = join(FIXTURE_DIRECTORY, "lambda-handler.ts");
 type CloudFormationResource = {
   readonly Type: string;
   readonly Properties: Record<string, unknown>;
+  readonly DependsOn?: string | string[];
   readonly DeletionPolicy?: string;
   readonly UpdateReplacePolicy?: string;
 };
@@ -83,6 +84,15 @@ function findRuntimeConfigAsset(outdir: string): string {
   throw new Error("Synthesized runtime-config.json asset was not found");
 }
 
+function dependencyList(resource: CloudFormationResource): string[] {
+  if (resource.DependsOn === undefined) {
+    return [];
+  }
+  return Array.isArray(resource.DependsOn)
+    ? resource.DependsOn
+    : [resource.DependsOn];
+}
+
 function actionList(value: unknown): string[] {
   if (typeof value === "string") {
     return [value];
@@ -115,7 +125,7 @@ afterAll(() => {
 describe("PlateauLensStack", () => {
   it("uses the fixed stack name and region", () => {
     expect(withoutBudget.stack.stackName).toBe(APPLICATION_NAME);
-    expect(withoutBudget.stack.region).toBe(APPLICATION_REGION);
+    expect(withoutBudget.stack.region).toBe("us-east-1");
   });
 
   it("creates the views table with the required owner index", () => {
@@ -454,6 +464,39 @@ describe("PlateauLensStack", () => {
       expect(domainParts.at(-1)).toMatch(/^-[a-f0-9]{8}$/u);
       expect(domain.Properties.ManagedLoginVersion).toBe(2);
     }
+
+    const userPoolLogicalId = withoutBudget.template.getResourceId(
+      "AWS::Cognito::UserPool",
+    );
+    const clientLogicalId = withoutBudget.template.getResourceId(
+      "AWS::Cognito::UserPoolClient",
+    );
+    const domainLogicalId = withoutBudget.template.getResourceId(
+      "AWS::Cognito::UserPoolDomain",
+    );
+    withoutBudget.template.resourceCountIs(
+      "AWS::Cognito::ManagedLoginBranding",
+      1,
+    );
+    withoutBudget.template.hasResourceProperties(
+      "AWS::Cognito::ManagedLoginBranding",
+      {
+        UserPoolId: { Ref: userPoolLogicalId },
+        ClientId: { Ref: clientLogicalId },
+        UseCognitoProvidedValues: true,
+      },
+    );
+    const branding = resourcesOf(
+      withoutBudget.template,
+      "AWS::Cognito::ManagedLoginBranding",
+    )[0];
+    expect(branding).toBeDefined();
+    if (branding === undefined) {
+      throw new Error("Synthesized managed login branding was not found");
+    }
+    expect(branding.Properties.Assets).toBeUndefined();
+    expect(branding.Properties.Settings).toBeUndefined();
+    expect(dependencyList(branding)).toContain(domainLogicalId);
   });
 
   it("protects only create, list, and delete routes with the user-pool authorizer", () => {
@@ -520,17 +563,49 @@ describe("PlateauLensStack", () => {
     withoutBudget.template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
       StageName: "$default",
       AutoDeploy: true,
-      RouteSettings: {
-        "POST /views": {
-          throttlingBurstLimit: 5,
-          throttlingRateLimit: 2,
-        },
-        "DELETE /views/{viewId}": {
-          throttlingBurstLimit: 5,
-          throttlingRateLimit: 2,
-        },
+    });
+
+    const stage = resourcesOf(
+      withoutBudget.template,
+      "AWS::ApiGatewayV2::Stage",
+    )[0];
+    expect(stage).toBeDefined();
+    if (stage === undefined) {
+      throw new Error("Synthesized HTTP API stage was not found");
+    }
+    const synthesizedRouteSettings = stage.Properties.RouteSettings;
+    if (
+      synthesizedRouteSettings === null ||
+      typeof synthesizedRouteSettings !== "object" ||
+      Array.isArray(synthesizedRouteSettings)
+    ) {
+      throw new Error("Synthesized route settings were not an object");
+    }
+    expect(synthesizedRouteSettings).toEqual({
+      "POST /views": {
+        ThrottlingBurstLimit: 5,
+        ThrottlingRateLimit: 2,
+      },
+      "DELETE /views/{viewId}": {
+        ThrottlingBurstLimit: 5,
+        ThrottlingRateLimit: 2,
       },
     });
+
+    const routeResources = withoutBudget.template.findResources(
+      "AWS::ApiGatewayV2::Route",
+    ) as Record<string, CloudFormationResource>;
+    const throttledRouteLogicalIds = Object.entries(routeResources)
+      .filter(([, route]) =>
+        Object.hasOwn(
+          synthesizedRouteSettings,
+          route.Properties.RouteKey as string,
+        ),
+      )
+      .map(([logicalId]) => logicalId)
+      .sort();
+    expect(throttledRouteLogicalIds).toHaveLength(2);
+    expect(dependencyList(stage).sort()).toEqual(throttledRouteLogicalIds);
 
     const api = resourcesOf(
       withBudgetAndDevOrigin.template,
@@ -562,7 +637,19 @@ describe("PlateauLensStack", () => {
       "Custom::CDKBucketDeployment",
     )[0];
     expect(deployment).toBeDefined();
-    expect(deployment?.Properties.SourceBucketNames).toHaveLength(2);
+    if (deployment === undefined) {
+      throw new Error("Synthesized web deployment was not found");
+    }
+    const stageLogicalId = withoutBudget.template.getResourceId(
+      "AWS::ApiGatewayV2::Stage",
+    );
+    const brandingLogicalId = withoutBudget.template.getResourceId(
+      "AWS::Cognito::ManagedLoginBranding",
+    );
+    expect(dependencyList(deployment)).toEqual(
+      expect.arrayContaining([stageLogicalId, brandingLogicalId]),
+    );
+    expect(deployment.Properties.SourceBucketNames).toHaveLength(2);
     expect(deployment?.Properties.SourceObjectKeys).toHaveLength(2);
     const markers = deployment?.Properties.SourceMarkers as
       | Array<Record<string, unknown>>

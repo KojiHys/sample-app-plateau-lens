@@ -11,12 +11,12 @@
 | Opportunity ID | TBD |
 | Account ID | TBD |
 | SFDC Link | TBD |
-| フェーズ | 実装・ローカル検証完了（AWSデプロイ待ち） |
-| 最終更新 | 2026-09-24 |
+| フェーズ | managed login branding更新・ログインフォーム復旧完了（初回ログイン・実認証検証待ち） |
+| 最終更新 | 2026-09-25 |
 
 ## 案件背景
 
-PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用をテーマとしたハッカソンが開催される。参加者にAWS上での実装イメージを持ってもらうため、リファレンスとなるサンプルアプリケーションを用意する。企画、実装、ローカル検証は完了しており、対象AWSアカウントと運用情報を確認して非本番環境へデプロイする段階にある。
+PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用をテーマとしたハッカソンが開催される。参加者にAWS上での実装イメージを持ってもらうため、リファレンスとなるサンプルアプリケーションを用意する。企画、実装、ローカル検証、`us-east-1`へのdeploy、基盤検証、フォールバック有効化、テストユーザー2名の作成、managed login branding更新は完了した。現在は招待メール受信後の初回ログインと認証・認可の実ユーザー検証を残している。
 
 ## 体制
 
@@ -40,8 +40,8 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 | 種別 | 内容 |
 |---|---|
 | コンプライアンス | 特になし（オープンデータのみ扱う。個人情報を保持しない設計とする） |
-| リージョン | ap-northeast-1（対象データが日本国内、参加者も国内想定）。Lambda@Edge を使う場合のみ us-east-1 が必要 |
-| 予算 | TBD（無料枠 + 数ドル/月を想定。ハッカソン期間限定） |
+| リージョン | us-east-1（デプロイ先として確定）。Lambda@Edgeは引き続き不採用 |
+| 予算 | 月額 10 USD。実費が80%を超えた時点で通知（支出停止機能ではない） |
 | 可用性 / DR | ハッカソンのデモ用途。SLA要件なし。ただし当日動かないと価値がゼロになるため、外部依存の縮退手段は用意する |
 | 性能 | 参加者PCのブラウザ描画性能が事実上のボトルネック |
 | ライセンス | PLATEAUデータは PDL1.0（CC BY 4.0 互換）。**アプリ内に出典表記が必須** |
@@ -52,7 +52,7 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 | 時期 | マイルストーン |
 |---|---|
 | 2026-09-24（木） | 企画（完了）。`output/proposal/サンプルアプリ企画_20260924.md` |
-| 2026-09-25（金） | 実装・ローカル検証（完了）。AWSデプロイは別途実施 |
+| 2026-09-25（金） | 実装・ローカル検証・AWS deploy・フォールバック有効化完了 |
 | **2026-09-26（土）** | **ハッカソン開催（確定）** |
 | 2026年10月上旬 | リソース削除 |
 
@@ -83,15 +83,31 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 | CDK | S3+CloudFront OAC、Cognito、HTTP API、Lambda、DynamoDB、Budgetsをsynth。保持リソースなし |
 | 自動検証 | Vitest 188件、Playwright 5件、型検査、本番ビルド、CDK synthが成功 |
 | セキュリティ検査 | `npm audit`脆弱性0件。Gitleaksとgit-secretsでGit全履歴・作業ツリーとも検出0件 |
-| フォールバックデータ | `.cache/fallback-tiles/`へ約195 MiB、635ファイルを準備し、全参照をローカル相対参照化。AWS未投入 |
+| フォールバックデータ | `.cache/fallback-tiles/`の635ファイルを専用S3へ同期し、CloudFront invalidation後にURLを有効化。root/child/b3dmの200を確認 |
 
-### 未検証（AWSデプロイ後に確認）
+### 実AWS検証済み（2026-09-25）
+
+- CloudFormation stackは`us-east-1`で`CREATE_COMPLETE`。CDK bootstrap version 32
+- CloudFrontは`Deployed`。ルートとSPA routeは200、欠損静的ファイル・欠損タイルは403
+- 実ブラウザ診断でpreflightとPLATEAU表示が成功し、出典表示を確認
+- Web・tiles S3はpublic access blockとSSE-S3を設定。S3直接アクセスは403、CloudFrontはOAC経由
+- API CORSはCloudFront originだけを許可し、localhostにはCORSヘッダーを返さない
+- `POST /views`、`GET /views`、`DELETE /views/{viewId}`はJWT必須。公開`GET /views/{viewId}`は認証なし。未認証POSTは401
+- POST/DELETE routeのスロットリングはburst 5、rate 2
+- Cognitoは自己サインアップ無効、Authorization Code Grant、CloudFront callback/logoutのみ。テストユーザー2名はEnabledかつ`FORCE_CHANGE_PASSWORD`
+- Cognito標準Managed Login Brandingは`CREATE_COMPLETE`。既存User Pool/client/domain/userを維持し、実ブラウザでemail/password form表示を確認
+- LambdaはNode.js 22でActive。DynamoDB tableとGSIはActive、PAY_PER_REQUEST。Log Group保持は7日
+- Budgetは月額10 USD、実費80%通知、通知先subscriberを確認
+- runtime configは`us-east-1`、CloudFront redirect URI、フォールバックURLを設定済み
+- 専用S3の`tiles/`配下は635オブジェクト、203,290,095 bytes。CloudFront `/tiles/*` invalidation完了。root tileset、参照child JSON、sample b3dmは200
+
+### 未検証（招待メール受信・初回ログイン後に確認）
 
 - Cognito managed loginの実Authorization Code + PKCEフローとtoken endpoint
 - API Gateway JWT authorizerからLambdaへ渡る実`sub`、issuer、audience
-- 未認証POSTの401、別所有者DELETEの403、GSI反映後の一覧収束
-- CloudFront経由のSPAとフォールバックタイル、S3直接アクセス拒否、欠損タイルの4xx
-- CloudFront origin限定CORSとBudgets通知
+- 別所有者DELETEの403、GSI反映後の一覧収束
+- 保存ビューの公開共有
+- 実障害時の自動フォールバック切り替え（ローカルE2Eでは検証済み）
 
 ## 決定事項
 
@@ -105,14 +121,16 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 
 ## ブロッカー / 論点
 
-ローカル実装をブロックする論点はない。AWSデプロイ前後に次を確定・実施する。
+ローカル実装と初回deployをブロックする論点はない。ハッカソン運用に向けて次を実施する。
 
-1. 対象AWS Account ID、非本番環境であること、使用する最小権限プロファイルを確認する
-2. 実在するBudgets通知先と月額上限を確定する
-3. フォールバックタイルはローカル準備済み。初回デプロイ後に専用S3へ同期し、CloudFront invalidation後だけURLを有効化する
-4. Cognitoテストユーザー2名の発行方法と使用するメールアドレスを確定する
-5. 実AWSで認証・認可・CORS・OAC・GSI・フォールバック・Budgetを確認する
-6. ハッカソン後のリソース削除日と担当者を確定する
+1. 対象devアカウント、`us-east-1`、Adminプロファイル、CDK bootstrap version 32、初回deployの`CREATE_COMPLETE`を確認済み
+2. Budgets通知先と月額上限10 USDは確定・作成・読み取り検証済み。Budgetは支出停止ではなく、実費80%超過時の通知
+3. `DEV_ORIGIN`は指定していない。CloudFront originだけをAPI CORSとCognito callback/logout URLへ設定済み
+4. フォールバックタイル635ファイルを専用S3へ同期し、CloudFront invalidation後にURLを有効化済み
+5. Cognitoテストユーザー2名とCognito標準Managed Login Brandingは作成済み。実ブラウザでlogin form表示を確認
+6. 招待メール到達と7日以内の初回パスワード変更を確認する
+7. 初回ログイン後、実ユーザーで認証・認可・GSI・公開共有と、実障害時の自動フォールバック切り替えを確認する
+8. ハッカソン後のリソース削除日と担当者を確定する
 
 ## 成果物
 
