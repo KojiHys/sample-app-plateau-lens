@@ -68,12 +68,11 @@ export function createIonIndependentViewer(container: HTMLElement): Viewer {
 }
 
 /**
- * Initial 3D view: looking north over Kanda/Marunouchi with a 30° depression
- * angle (pitch −30°). The range keeps roughly the same area in view as the
- * former top-down view of INITIAL_VIEW_BOUNDS.
+ * Initial 3D view: looking north over Kanda/Marunouchi with a 60° depression
+ * angle (pitch −60°, 30° from straight down) from 1,000 m away.
  */
-export const INITIAL_OBLIQUE_PITCH = CesiumMath.toRadians(-30);
-const INITIAL_OBLIQUE_RANGE_METERS = 1_400;
+export const INITIAL_OBLIQUE_PITCH = CesiumMath.toRadians(-60);
+const INITIAL_OBLIQUE_RANGE_METERS = 1_000;
 // Approximate ground ellipsoidal height around Kanda (elevation + geoid height).
 const FOCUS_HEIGHT_METERS = 42;
 

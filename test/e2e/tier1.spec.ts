@@ -99,9 +99,9 @@ test("3D display settings load imagery, terrain, textures, 2D mode, and reset th
   await expect(page.locator("#toggle-lighting")).not.toBeChecked();
   await expect(page.getByText("国土地理院の標高タイル")).toBeVisible();
 
-  // The initial 3D view looks north at a 30° depression angle, from south of the focus.
+  // The initial 3D view looks north at a 60° depression angle, from south of the focus.
   const initialCamera = decodeCamera(page.url());
-  expect(initialCamera.pitch).toBeCloseTo(-Math.PI / 6, 2);
+  expect(initialCamera.pitch).toBeCloseTo(-Math.PI / 3, 2);
   expect(initialCamera.longitudeDegrees).toBeCloseTo(139.762, 3);
   expect(initialCamera.latitudeDegrees).toBeLessThan(35.6985);
 
