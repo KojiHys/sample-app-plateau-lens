@@ -19,8 +19,9 @@ import {
   type TerrainProvider,
 } from "cesium";
 
-// Start over the Kanda/Marunouchi area rather than loading all of Chiyoda at once.
-export const INITIAL_VIEW_BOUNDS = Rectangle.fromDegrees(139.759, 35.696, 139.765, 35.701);
+// Initial 2D view: centred on the ground point at the centre of the initial 3D
+// camera view (about 612 m ahead of the camera), with the former 2D extent.
+export const INITIAL_VIEW_BOUNDS = Rectangle.fromDegrees(139.7599, 35.6883, 139.7659, 35.6933);
 
 // PLATEAU-Ortho covers the 23 wards at zoom 10–19. Limiting the rectangle keeps
 // requests inside the published area and the minimum-level tile count small.
@@ -63,29 +64,54 @@ export function createIonIndependentViewer(container: HTMLElement): Viewer {
   viewer.scene.globe.baseColor = Color.fromCssColorString("#122338");
   viewer.clock.shouldAnimate = false;
   viewer.clock.currentTime = daytimeInTokyo();
-  viewObliquely(viewer, Rectangle.center(INITIAL_VIEW_BOUNDS), INITIAL_OBLIQUE_RANGE_METERS, 0);
+  viewer.camera.setView(initialCameraView());
   return viewer;
 }
 
 /**
- * Initial 3D view: looking north over Kanda/Marunouchi with a 60° depression
- * angle (pitch −60°, 30° from straight down) from 1,000 m away.
+ * Initial 3D camera, chosen on screen: above Otemachi, 343 m ellipsoidal
+ * height, looking north-northeast (heading 17.5°) with a 26.2° depression
+ * angle toward Kanda.
  */
-export const INITIAL_OBLIQUE_PITCH = CesiumMath.toRadians(-60);
-const INITIAL_OBLIQUE_RANGE_METERS = 1_000;
+export const INITIAL_CAMERA = {
+  heightMeters: 342.78,
+  latitudeDegrees: 35.685521,
+  longitudeDegrees: 139.760827,
+  heading: 0.304580,
+  pitch: -0.456794,
+  roll: 0,
+} as const;
+
+function initialCameraView(): { destination: Cartesian3; orientation: HeadingPitchRollValues } {
+  return {
+    destination: Cartesian3.fromDegrees(
+      INITIAL_CAMERA.longitudeDegrees,
+      INITIAL_CAMERA.latitudeDegrees,
+      INITIAL_CAMERA.heightMeters,
+    ),
+    orientation: {
+      heading: INITIAL_CAMERA.heading,
+      pitch: INITIAL_CAMERA.pitch,
+      roll: INITIAL_CAMERA.roll,
+    },
+  };
+}
+
+interface HeadingPitchRollValues {
+  heading: number;
+  pitch: number;
+  roll: number;
+}
+
 // Approximate ground ellipsoidal height around Kanda (elevation + geoid height).
 const FOCUS_HEIGHT_METERS = 42;
 
-function viewObliquely(
-  viewer: Viewer,
-  focus: Cartographic,
-  rangeMeters: number,
-  durationSeconds: number,
-): void {
+/** Looks at a ground point with the initial camera's heading and pitch. */
+function viewObliquely(viewer: Viewer, focus: Cartographic, rangeMeters: number): void {
   const target = Cartesian3.fromRadians(focus.longitude, focus.latitude, FOCUS_HEIGHT_METERS);
   viewer.camera.flyToBoundingSphere(new BoundingSphere(target, 1), {
-    duration: durationSeconds,
-    offset: new HeadingPitchRange(0, INITIAL_OBLIQUE_PITCH, rangeMeters),
+    duration: 0,
+    offset: new HeadingPitchRange(INITIAL_CAMERA.heading, INITIAL_CAMERA.pitch, rangeMeters),
   });
 }
 
@@ -120,7 +146,7 @@ export function morphSceneMode(viewer: Viewer, mode: "2d" | "3d", onComplete: ()
     removeListener();
     if (mode === "3d") {
       // Return to the same oblique angle as the initial view.
-      viewObliquely(viewer, focus, height * 1.5, 0);
+      viewObliquely(viewer, focus, height * 1.5);
     } else {
       camera.setView({
         destination: Cartesian3.fromRadians(focus.longitude, focus.latitude, height),
@@ -143,12 +169,7 @@ export function resetCameraView(viewer: Viewer): void {
     viewer.camera.flyTo({ destination: INITIAL_VIEW_BOUNDS, duration: CAMERA_RESET_SECONDS });
     return;
   }
-  viewObliquely(
-    viewer,
-    Rectangle.center(INITIAL_VIEW_BOUNDS),
-    INITIAL_OBLIQUE_RANGE_METERS,
-    CAMERA_RESET_SECONDS,
-  );
+  viewer.camera.flyTo({ ...initialCameraView(), duration: CAMERA_RESET_SECONDS });
 }
 
 export function createOrthoImageryLayer(urlTemplate: string): ImageryLayer {

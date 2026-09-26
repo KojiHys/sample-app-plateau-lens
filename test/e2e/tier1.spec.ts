@@ -99,11 +99,11 @@ test("3D display settings load imagery, terrain, textures, 2D mode, and reset th
   await expect(page.locator("#toggle-lighting")).not.toBeChecked();
   await expect(page.getByText("国土地理院の標高タイル")).toBeVisible();
 
-  // The initial 3D view looks north at a 60° depression angle, from south of the focus.
+  // The initial 3D camera is the fixed oblique view above Otemachi.
   const initialCamera = decodeCamera(page.url());
-  expect(initialCamera.pitch).toBeCloseTo(-Math.PI / 3, 2);
-  expect(initialCamera.longitudeDegrees).toBeCloseTo(139.762, 3);
-  expect(initialCamera.latitudeDegrees).toBeLessThan(35.6985);
+  expect(initialCamera.pitch).toBeCloseTo(-0.4568, 3);
+  expect(initialCamera.longitudeDegrees).toBeCloseTo(139.7608, 4);
+  expect(initialCamera.latitudeDegrees).toBeCloseTo(35.6855, 4);
 
   await expect.poll(() => hosts.has("cyberjapandata.gsi.go.jp")).toBe(true);
   await expect
@@ -127,8 +127,8 @@ test("3D display settings load imagery, terrain, textures, 2D mode, and reset th
     .poll(() => {
       const camera = decodeCamera(page.url());
       return (
-        Math.abs(camera.longitudeDegrees - 139.762) < 0.001 &&
-        Math.abs(camera.latitudeDegrees - 35.6985) < 0.001
+        Math.abs(camera.longitudeDegrees - 139.7629) < 0.001 &&
+        Math.abs(camera.latitudeDegrees - 35.6908) < 0.001
       );
     })
     .toBe(true);
