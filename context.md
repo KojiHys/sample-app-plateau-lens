@@ -11,12 +11,12 @@
 | Opportunity ID | TBD |
 | Account ID | TBD |
 | SFDC Link | TBD |
-| フェーズ | managed login branding更新・ログインフォーム復旧完了（初回ログイン・実認証検証待ち） |
-| 最終更新 | 2026-09-25 |
+| フェーズ | デモ用開発完了。主要経路を実AWSで確認済み、追加検証と後日削除を保留 |
+| 最終更新 | 2026-09-26 |
 
 ## 案件背景
 
-PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用をテーマとしたハッカソンが開催される。参加者にAWS上での実装イメージを持ってもらうため、リファレンスとなるサンプルアプリケーションを用意する。企画、実装、ローカル検証、`us-east-1`へのdeploy、基盤検証、フォールバック有効化、テストユーザー2名の作成、managed login branding更新は完了した。現在は招待メール受信後の初回ログインと認証・認可の実ユーザー検証を残している。
+PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用をテーマとしたハッカソンが開催される。参加者にAWS上での実装イメージを持ってもらうため、リファレンスとなるサンプルアプリケーションを用意した。企画、実装、ローカル検証、`us-east-1`へのdeploy、基盤検証、フォールバック有効化、Managed Login復旧、2名の実ユーザーによるログイン・保存・一覧分離・公開共有まで完了した。デモ用途として開発を完了し、追加の認可検証と後日削除を保留する。
 
 ## 体制
 
@@ -87,27 +87,27 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 
 ### 実AWS検証済み（2026-09-25）
 
-- CloudFormation stackは`us-east-1`で`CREATE_COMPLETE`。CDK bootstrap version 32
+- CloudFormation stackは`us-east-1`で`UPDATE_COMPLETE`。CDK bootstrap version 32
 - CloudFrontは`Deployed`。ルートとSPA routeは200、欠損静的ファイル・欠損タイルは403
 - 実ブラウザ診断でpreflightとPLATEAU表示が成功し、出典表示を確認
 - Web・tiles S3はpublic access blockとSSE-S3を設定。S3直接アクセスは403、CloudFrontはOAC経由
 - API CORSはCloudFront originだけを許可し、localhostにはCORSヘッダーを返さない
 - `POST /views`、`GET /views`、`DELETE /views/{viewId}`はJWT必須。公開`GET /views/{viewId}`は認証なし。未認証POSTは401
 - POST/DELETE routeのスロットリングはburst 5、rate 2
-- Cognitoは自己サインアップ無効、Authorization Code Grant、CloudFront callback/logoutのみ。テストユーザー2名はEnabledかつ`FORCE_CHANGE_PASSWORD`
-- Cognito標準Managed Login Brandingは`CREATE_COMPLETE`。既存User Pool/client/domain/userを維持し、実ブラウザでemail/password form表示を確認
+- Cognitoは自己サインアップ無効、Authorization Code Grant、CloudFront callback/logoutのみ。テストユーザー2名は`CONFIRMED`
+- Cognito標準Managed Login Brandingは`CREATE_COMPLETE`。既存User Pool/client/domain/userを維持し、2名の実ログインを確認
+- 実ユーザー2名の保存とGSI一覧分離を確認。未ログイン公開共有は200で、公開レスポンスに`ownerSub`とemailを含めない
 - LambdaはNode.js 22でActive。DynamoDB tableとGSIはActive、PAY_PER_REQUEST。Log Group保持は7日
 - Budgetは月額10 USD、実費80%通知、通知先subscriberを確認
 - runtime configは`us-east-1`、CloudFront redirect URI、フォールバックURLを設定済み
 - 専用S3の`tiles/`配下は635オブジェクト、203,290,095 bytes。CloudFront `/tiles/*` invalidation完了。root tileset、参照child JSON、sample b3dmは200
 
-### 未検証（招待メール受信・初回ログイン後に確認）
+### 開発完了時の保留事項
 
-- Cognito managed loginの実Authorization Code + PKCEフローとtoken endpoint
-- API Gateway JWT authorizerからLambdaへ渡る実`sub`、issuer、audience
-- 別所有者DELETEの403、GSI反映後の一覧収束
-- 保存ビューの公開共有
-- 実障害時の自動フォールバック切り替え（ローカルE2Eでは検証済み）
+- 別所有者DELETEの403実ユーザー検証
+- プライマリ配信を意図的に失敗させる実環境フォールバック検証（ローカルE2Eでは検証済み）
+- 検証用DynamoDB itemの整理
+- ハッカソン後の削除日・担当者確定と、明示承認後のresource削除
 
 ## 決定事項
 
@@ -119,18 +119,12 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 6. **一覧は「自分のビュー」のみ**（Q-07）。全参加者のビュー一覧はスコープ外
 7. **命名**: リポジトリ名 `sample-app-plateau-lens`。全AWSリソースの接頭辞も同一にして短縮しない（残存リソースを接頭辞で判別できるようにする）。表示名は `PLATEAU Lens`、サブタイトルに「非公式」を明記。公式ロゴ・公式カラーは使わない
 
-## ブロッカー / 論点
+## 運用上の残作業
 
-ローカル実装と初回deployをブロックする論点はない。ハッカソン運用に向けて次を実施する。
-
-1. 対象devアカウント、`us-east-1`、Adminプロファイル、CDK bootstrap version 32、初回deployの`CREATE_COMPLETE`を確認済み
-2. Budgets通知先と月額上限10 USDは確定・作成・読み取り検証済み。Budgetは支出停止ではなく、実費80%超過時の通知
-3. `DEV_ORIGIN`は指定していない。CloudFront originだけをAPI CORSとCognito callback/logout URLへ設定済み
-4. フォールバックタイル635ファイルを専用S3へ同期し、CloudFront invalidation後にURLを有効化済み
-5. Cognitoテストユーザー2名とCognito標準Managed Login Brandingは作成済み。実ブラウザでlogin form表示を確認
-6. 招待メール到達と7日以内の初回パスワード変更を確認する
-7. 初回ログイン後、実ユーザーで認証・認可・GSI・公開共有と、実障害時の自動フォールバック切り替えを確認する
-8. ハッカソン後のリソース削除日と担当者を確定する
+- Budgetは有効。ハッカソン終了まで通知を監視する
+- DynamoDBには検証・デモ用itemが残っている。削除する場合は対象を確認して明示承認を得る
+- ハッカソン後の削除日と担当者を確定する
+- アプリstack削除とCDK bootstrap resource削除は分けて判断し、それぞれ明示承認後に実行する
 
 ## 成果物
 
@@ -145,3 +139,4 @@ PLATEAU（国土交通省の3D都市モデル）のオープンデータ活用�
 | 補助スクリプト | `scripts/` | 資産同期、フォールバック取得、デプロイガード、シークレット検査 |
 | 企画書 | `output/proposal/サンプルアプリ企画_20260924.md` | 判断の経緯、3パターン比較、W-A 6柱、リスク表 |
 | 実装引き継ぎ書 | `output/proposal/実装引き継ぎ書_20260924.md` | 確定仕様、属性、API契約、完成確認チェックリスト |
+| 振り返りメモ | `output/retrospective/振り返りメモ_20260926.md` | AWSデプロイ障害、復旧、Lesson Learned、次回チェックリスト |
