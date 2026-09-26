@@ -7,6 +7,8 @@ PLATEAU Lensは、千代田区のPLATEAU 3D都市モデルを建物属性で絞�
 ## 機能
 
 - Cesium ionトークンを使わない、千代田区LOD2建物のブラウザ表示
+- 航空写真（PLATEAU-Ortho）、国土地理院の標高タイルによる地形、建物テクスチャ、影と光の切り替え
+- 3D表示と2D表示（真上）の切り替え、視点のリセット
 - 高さ、地上階数、屋根投影面積、神田川L2浸水深による数値フィルター
 - 建物用途、用途地域による分類フィルター
 - 用途、高さ、浸水深による着色と凡例
@@ -216,6 +218,43 @@ curl -fsSL "https://api.plateauview.mlit.go.jp/datacatalog/plateau-datasets" \
 ${feature["荒川水系神田川流域（都道府県管理区間）_L2（想定最大規模）_浸水深"]}
 ```
 
+## 3D表示
+
+画面左の「3D表示」で次を切り替えます。設定はURL状態と保存ビューに含めません。既存の共有URLと保存データのスキーマ（v1）は変わりません。
+
+| 項目 | 初期値 | データ | 補足 |
+|---|---|---|---|
+| 3D / 2D | 3D | ― | 2Dへ切り替えると、画面中央の地点を真上から表示します。地形と影は2Dでは無効です |
+| 航空写真 | ON | [PLATEAU-Ortho](https://github.com/Project-PLATEAU/plateau-streaming-tutorial/blob/main/ortho/plateau-ortho-streaming.md)（2023年度、ズーム10〜18） | ズーム19は千代田区の一部で404になるため使いません |
+| 地形（標高） | ON | [国土地理院の標高タイル](https://maps.gsi.go.jp/development/ichiran.html)（`dem5a_png`、欠損は`dem_png`で補完） | Cesium ionを使いません |
+| 建物テクスチャ | OFF | `13101-bldg-lod2-texture-latest` | 着色「なし」のときだけテクスチャを表示します。切り替え時にtilesetを読み直します |
+| 影と光 | OFF | ― | 太陽位置は当日10:00（日本時間）に固定します |
+
+初期視点は、大手町の上空（楕円体高343 m）から北北東（方位17.5度）の神田方面を俯角26.2度で見下ろす位置です（`web/src/cesium/viewer.ts`の`INITIAL_CAMERA`）。画面で決めた視点を採用する場合は、「状態URLをコピー」で得たURLの`state`をbase64urlデコードし、`camera`の値を`INITIAL_CAMERA`へ転記します。3Dでは`Ctrl`＋ドラッグ、ホイール押し込み＋ドラッグ、2本指の同方向ドラッグで傾きを変えられます。
+
+「視点をリセット」はカメラだけを初期視点へ戻します。2Dでは真上からの初期範囲へ戻します。フィルター、着色、表示設定は維持します。
+
+### 地形の高さ合わせ
+
+PLATEAU 3D Tilesの高さは楕円体高、国土地理院の標高タイルは標高です。千代田区のジオイド高は36.76〜36.99 mのため、標高に定数36.9 mを加えて楕円体高に合わせます（`web/src/cesium/gsi-dem.ts`）。定数補正の誤差は約0.15 mで、5 mメッシュの粗さより小さい値です。
+
+- 地形を取得するのは千代田区周辺（東経139.68〜139.84度、北緯35.64〜35.74度）だけです。範囲外はジオイド高の平面です
+- 標高タイルの取得に失敗した箇所は平面で表示し、画面に通知します
+- 他の都市へ`tilesetUrl`を変更する場合は、対象地域のジオイド高と範囲を見直してください
+
+### データソースの変更
+
+各データのURLは`runtime-config.json`またはVite環境変数で上書きできます。空文字を指定すると、その機能を無効にします。
+
+| runtime config | Vite環境変数 |
+|---|---|
+| `texturedTilesetUrl` | `VITE_TEXTURED_TILESET_URL` |
+| `orthoImageryUrl` | `VITE_ORTHO_IMAGERY_URL` |
+| `terrainFineUrl` | `VITE_TERRAIN_FINE_URL` |
+| `terrainCoarseUrl` | `VITE_TERRAIN_COARSE_URL` |
+
+CDKが生成する`runtime-config.json`はこれらのキーを含まないため、既定値（`web/src/config.ts`）を使います。航空写真と標高タイルは外部配信に依存し、フォールバック（自前配信）はありません。
+
 ## 外部配信停止に備えたフォールバック
 
 PLATEAU配信サービスは試験運用でSLAがありません。フォールバックを有効にする場合は、次の順序を変えないでください。タイルが存在する前にURLを公開すると、障害時に利用できないフォールバックをアプリへ設定してしまいます。
@@ -294,9 +333,11 @@ output/proposal/ 企画書と実装引き継ぎ書
 
 ## データ、ライセンス、出典
 
-画面にはPLATEAUの出典と利用条件を常時表示します。
+画面にはPLATEAU、航空写真、標高データの出典と利用条件を常時表示します。
 
 - [Project PLATEAU](https://www.mlit.go.jp/plateau/)
+- [PLATEAU-Ortho](https://github.com/Project-PLATEAU/plateau-streaming-tutorial/blob/main/ortho/plateau-ortho-streaming.md)（地理院タイルを含む）
+- [国土地理院 地理院タイル一覧（標高タイル）](https://maps.gsi.go.jp/development/ichiran.html)
 - [PLATEAUサイトポリシー](https://www.mlit.go.jp/plateau/site-policy/)
 - [PLATEAU 3D Tiles配信仕様](https://docs.plateauview.mlit.go.jp/datasets/3d-tiles/)
 - [データカタログ シンプルAPI](https://docs.plateauview.mlit.go.jp/api/rest/operations/datacatalogplateau-datasets/)

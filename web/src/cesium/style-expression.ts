@@ -113,7 +113,9 @@ export function colorForCategory(value: CategoryValue): string {
   return USAGE_COLOR_PALETTE[(hash >>> 0) % USAGE_COLOR_PALETTE.length] ?? STYLE_COLORS.neutral;
 }
 
-function colorExpression(color: string, alpha = 0.92): string {
+// Opaque colours: with aerial imagery and terrain behind the buildings, any
+// translucency makes stacked buildings look like ghosts.
+function colorExpression(color: string, alpha = 1): string {
   return `color(${JSON.stringify(color)}, ${alpha})`;
 }
 
@@ -140,12 +142,21 @@ function continuousColorExpression(
   };
 }
 
+export interface TilesetStyleOptions {
+  /** Keep the tileset texture visible. Used only with colorMode "none". */
+  showTextures?: boolean;
+}
+
 export function buildColorExpression(
   state: FilterState,
   usageValues: readonly CategoryValue[],
+  options: TilesetStyleOptions = {},
 ): string | ColorConditions {
   if (state.colorMode === "none") {
-    return colorExpression(STYLE_COLORS.neutral);
+    // White with HIGHLIGHT blending multiplies by 1 and leaves textures intact.
+    return options.showTextures === true
+      ? colorExpression("#ffffff")
+      : colorExpression(STYLE_COLORS.neutral);
   }
   if (state.colorMode === "height") {
     return continuousColorExpression(
@@ -181,10 +192,11 @@ export function buildColorExpression(
 export function createTilesetStyle(
   state: FilterState,
   usageValues: readonly CategoryValue[],
+  options: TilesetStyleOptions = {},
 ): Cesium3DTileStyle {
   return new Cesium3DTileStyle({
     show: buildShowExpression(state),
-    color: buildColorExpression(state, usageValues),
+    color: buildColorExpression(state, usageValues, options),
   });
 }
 
