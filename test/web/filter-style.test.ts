@@ -74,6 +74,27 @@ describe("combined Cesium style", () => {
     }
   });
 
+  it("keeps building colours opaque so imagery does not show through", () => {
+    const state = createDefaultFilterState();
+    expect(buildColorExpression(state, [])).toBe(
+      `color(${JSON.stringify(STYLE_COLORS.neutral)}, 1)`,
+    );
+  });
+
+  it("uses white for textured tiles only when no attribute colour mode is active", () => {
+    const state = createDefaultFilterState();
+    expect(buildColorExpression(state, [], { showTextures: true })).toBe(
+      `color("#ffffff", 1)`,
+    );
+
+    state.colorMode = "height";
+    const color = buildColorExpression(state, [], { showTextures: true });
+    expect(color).not.toBeTypeOf("string");
+    if (typeof color !== "string") {
+      expect(color.conditions[0]?.[1]).toContain(STYLE_COLORS.height.low);
+    }
+  });
+
   it("uses stable colors and a safe fallback for dynamically discovered usage values", () => {
     expect(colorForCategory("住宅")).toBe(colorForCategory("住宅"));
     const state = createDefaultFilterState();

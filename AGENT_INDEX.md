@@ -29,7 +29,7 @@
 
 | パス | 内容 |
 |---|---|
-| `web/` | CesiumJSビューア、属性フィルター、着色、プリセット、URL状態共有、Cognito PKCE、保存・一覧・共有・削除UI |
+| `web/` | CesiumJSビューア、属性フィルター、着色、プリセット、URL状態共有、Cognito PKCE、保存・一覧・共有・削除UI、3D表示設定（航空写真・地形・テクスチャ・影と光・2D/3D・視点リセット） |
 | `lambda/` | JWT `sub`で所有者を決める保存ビューCRUD API。入力スキーマ、サイズ、UUID、所有者を検証 |
 | `infrastructure/` | S3 + CloudFront OAC、Cognito、HTTP API、Lambda、DynamoDB、Budgetsを定義するAWS CDK |
 | `scripts/` | Cesium資産同期、フォールバックタイル準備、デプロイ入力検証、シークレット検査 |
@@ -43,8 +43,8 @@
 ## ローカル検証実績
 
 - 人間によるローカル画面確認: 完了
-- Vitest: 14ファイル、188件成功
-- Playwright E2E: 5件成功
+- Vitest: 16ファイル、205件成功（3D表示追加後）
+- Playwright E2E: 6件成功（3D表示追加後）
 - TypeScript型検査、Vite本番ビルド、CDK synth: 成功
 - `npm audit`: 脆弱性0件
 - Gitleaksとgit-secrets: Git全履歴・作業ツリーとも検出0件
@@ -77,6 +77,13 @@
 9. フォールバックURLは、タイルをS3へ投入してCloudFront invalidationを確認した後だけ有効化する
 10. AWSリソースは短期サンプル用で、`cdk destroy`時に削除する。実行前に対象と影響の明示確認が必要
 11. **デプロイ先リージョンは`us-east-1`**。Budget月額上限は10 USD、`DEV_ORIGIN`は指定しない
+12. **地形はCesium ionを使わない**。国土地理院の標高タイルに千代田区のジオイド高36.9 mを加えて楕円体高に合わせる。Cesium ionの無料プランは企業・政府用途に使えないため不採用。ionの地形は有償ライセンス確保後に別PRで検討する
+13. **3D表示設定はURL状態と保存ビューに含めない**。v1スキーマと既存データの互換性を保つ
+
+## 3D表示の保留事項
+
+1. 標高タイルの自前配信（専用S3へのミラー）。AWSへの書き込みと有効化フラグが必要なため別PRで扱う
+2. デプロイ環境（CloudFront）での3D表示の実機確認。本変更はWeb資産だけで、CDKの差分はない
 
 ## 開発完了時の保留事項
 

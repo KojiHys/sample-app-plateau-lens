@@ -4,8 +4,11 @@ import {
   Cartesian2,
   type Cesium3DTile,
   Cesium3DTileFeature,
+  EllipsoidTerrainProvider,
   ScreenSpaceEventType,
   type Cesium3DTileset,
+  type ImageryLayer,
+  type TerrainProvider,
   type Viewer,
 } from "cesium";
 import { AuthError, createAuth } from "./auth.ts";
@@ -39,7 +42,24 @@ import {
   mergeCategoryValues,
   type CategoryValues,
 } from "./cesium/tile-content.ts";
-import { createIonIndependentViewer, createPlateauTileset } from "./cesium/viewer.ts";
+import { createGsiTerrainProvider } from "./cesium/terrain.ts";
+import {
+  applySceneAppearance,
+  applyTilesetBlendMode,
+  createIonIndependentViewer,
+  createOrthoImageryLayer,
+  createPlateauTileset,
+  morphSceneMode,
+  resetCameraView,
+} from "./cesium/viewer.ts";
+import {
+  createDefaultDisplaySettings,
+  effectiveLighting,
+  effectiveTerrain,
+  isSceneModeSetting,
+  shouldShowTextures,
+  type DisplaySettings,
+} from "./display-settings.ts";
 import {
   createInitialTilesetLoadState,
   transitionInitialTilesetLoad,
@@ -82,6 +102,7 @@ let filterState = restoredSnapshot
 let lastCameraState: CameraState | null = restoredSnapshot?.camera ?? null;
 let viewer: Viewer | null = null;
 let tileset: Cesium3DTileset | null = null;
+let activeTilesetTextured = false;
 let discoveredCategories: CategoryValues = {
   districtsAndZones: [],
   usage: [],
@@ -216,6 +237,23 @@ app.innerHTML = `
           <p>浸水深0.5m以上・地上4階以上・屋根投影面積1,000m²以上を適用します。</p>
         </section>
 
+        <section class="control-section" aria-labelledby="display-title">
+          <h3 id="display-title">3D表示</h3>
+          <fieldset class="scene-mode-options">
+            <legend class="visually-hidden">表示モード</legend>
+            <label><input type="radio" name="scene-mode" value="3d" disabled />3D</label>
+            <label><input type="radio" name="scene-mode" value="2d" disabled />2D（真上）</label>
+          </fieldset>
+          <div class="display-toggles">
+            <label><input id="toggle-ortho" type="checkbox" disabled />航空写真</label>
+            <label><input id="toggle-terrain" type="checkbox" disabled />地形（標高）</label>
+            <label><input id="toggle-textures" type="checkbox" disabled />建物テクスチャ</label>
+            <label><input id="toggle-lighting" type="checkbox" disabled />影と光</label>
+          </div>
+          <p class="section-help">テクスチャは着色「なし」のときに表示します。テクスチャと影はデータ量と描画負荷が増えます。地形と影は3D表示でのみ有効です。</p>
+          <output id="display-status" class="display-status" role="status" aria-live="polite"></output>
+        </section>
+
         <section class="cloud-views-section" aria-labelledby="cloud-views-title">
           <div class="section-heading-row">
             <h3 id="cloud-views-title">保存ビュー</h3>
@@ -276,6 +314,10 @@ app.innerHTML = `
       <section class="map-stage" aria-label="千代田区3D都市モデル地図">
         <div id="cesium-container"></div>
 
+        <button id="reset-view" class="secondary-button map-reset-button" type="button" disabled>
+          視点をリセット
+        </button>
+
         <aside id="legend" class="legend" aria-labelledby="legend-title"></aside>
 
         <aside id="attribute-panel" class="attribute-panel" aria-labelledby="attribute-title" aria-live="polite" tabindex="-1" hidden>
@@ -307,6 +349,13 @@ app.innerHTML = `
             <a href="https://www.mlit.go.jp/plateau/site-policy/" target="_blank" rel="noreferrer">公共データ利用規約（第1.0版／PDL1.0、CC BY 4.0互換）</a>
             ・<a href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank" rel="noreferrer">CC BY 4.0</a>
           </p>
+          <p class="attribution">
+            航空写真：国土交通省
+            <a href="https://github.com/Project-PLATEAU/plateau-streaming-tutorial/blob/main/ortho/plateau-ortho-streaming.md" target="_blank" rel="noreferrer">PLATEAU-Ortho</a>
+            （地理院タイルを含む）。標高：
+            <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">国土地理院の標高タイル</a>
+            を加工して作成
+          </p>
         </div>
       </section>
     </div>
@@ -325,6 +374,15 @@ const attributePanel = requiredElement<HTMLElement>("#attribute-panel");
 const attributeValues = requiredElement<HTMLElement>("#attribute-values");
 const shareFeedback = requiredElement<HTMLElement>("#share-feedback");
 const cloudStatus = requiredElement<HTMLOutputElement>("#cloud-status");
+const resetViewButton = requiredElement<HTMLButtonElement>("#reset-view");
+const orthoToggle = requiredElement<HTMLInputElement>("#toggle-ortho");
+const terrainToggle = requiredElement<HTMLInputElement>("#toggle-terrain");
+const texturesToggle = requiredElement<HTMLInputElement>("#toggle-textures");
+const lightingToggle = requiredElement<HTMLInputElement>("#toggle-lighting");
+const displayStatus = requiredElement<HTMLOutputElement>("#display-status");
+const sceneModeRadios = [
+  ...document.querySelectorAll<HTMLInputElement>('input[name="scene-mode"]'),
+];
 
 interface NumericControl {
   fieldset: HTMLFieldSetElement;
@@ -625,9 +683,15 @@ function persistViewState(): void {
   );
 }
 
+function applyTilesetStyle(target: Cesium3DTileset): void {
+  const showTextures = shouldShowTextures(activeTilesetTextured, filterState.colorMode);
+  target.style = createTilesetStyle(filterState, discoveredCategories.usage, { showTextures });
+  applyTilesetBlendMode(target, showTextures);
+}
+
 function applyFilterState(): void {
   if (tileset) {
-    tileset.style = createTilesetStyle(filterState, discoveredCategories.usage);
+    applyTilesetStyle(tileset);
   }
   renderLegend();
   persistViewState();
@@ -969,7 +1033,7 @@ async function start(): Promise<void> {
         destroyUnmountedTileset(fallbackTileset);
         return;
       }
-      mountTileset(fallbackTileset, "fallback", fallbackGeneration);
+      mountTileset(fallbackTileset, "fallback", fallbackGeneration, false);
     } catch (error: unknown) {
       if (generation !== fallbackGeneration) {
         return;
@@ -986,6 +1050,7 @@ async function start(): Promise<void> {
     candidate: Cesium3DTileset,
     source: TilesetSource,
     candidateGeneration: number,
+    textured: boolean,
   ): void {
     const lifecycle: ActiveTilesetLifecycle = {
       categoryFrame: null,
@@ -1004,7 +1069,9 @@ async function start(): Promise<void> {
     };
     activeLifecycle = lifecycle;
     tileset = candidate;
-    candidate.style = createTilesetStyle(filterState, discoveredCategories.usage);
+    activeTilesetTextured = textured;
+    applyTilesetStyle(candidate);
+    syncDisplayControls();
     status.textContent = source === "fallback" ? "代替3D Tiles 読込中" : "3D Tiles 読込中";
     delete status.dataset.result;
 
@@ -1057,10 +1124,7 @@ async function start(): Promise<void> {
           if (shouldRenderCategories) {
             renderCategoryControls();
             if (filterState.colorMode === "usage") {
-              candidate.style = createTilesetStyle(
-                filterState,
-                discoveredCategories.usage,
-              );
+              applyTilesetStyle(candidate);
               renderLegend();
             }
           }
@@ -1125,30 +1189,149 @@ async function start(): Promise<void> {
     persistViewState();
   }
 
-  const initialGeneration = ++generation;
-  try {
-    const primaryTileset = await createPlateauTileset(config.tilesetUrl);
-    if (generation !== initialGeneration) {
-      destroyUnmountedTileset(primaryTileset);
-      return;
+  /**
+   * Loads the primary tileset for the current texture setting. Replaces any
+   * mounted tileset; on failure it falls back once, like the initial load.
+   */
+  async function loadPrimaryTileset(): Promise<void> {
+    const textured = displaySettings.textures && texturedTilesetAvailable;
+    const tilesetUrl = textured ? config.texturedTilesetUrl : config.tilesetUrl;
+    const previousGeneration = activeLifecycle?.generation;
+    generation += 1;
+    const primaryGeneration = generation;
+    if (previousGeneration !== undefined) {
+      detachActiveTileset(previousGeneration);
+      resetDiscoveredCategories();
     }
-    mountTileset(primaryTileset, "primary", initialGeneration);
-  } catch (primaryError: unknown) {
-    if (generation !== initialGeneration) {
-      return;
+
+    try {
+      const primaryTileset = await createPlateauTileset(tilesetUrl);
+      if (generation !== primaryGeneration) {
+        destroyUnmountedTileset(primaryTileset);
+        return;
+      }
+      mountTileset(primaryTileset, "primary", primaryGeneration, textured);
+    } catch (primaryError: unknown) {
+      if (generation !== primaryGeneration) {
+        return;
+      }
+      if (!fallbackAvailable || fallbackAttempted) {
+        throw primaryError;
+      }
+      fallbackAttempted = true;
+      status.textContent = "代替データを読込中";
+      const fallbackTileset = await createPlateauTileset(config.fallbackTilesetUrl);
+      if (generation !== primaryGeneration) {
+        destroyUnmountedTileset(fallbackTileset);
+        return;
+      }
+      mountTileset(fallbackTileset, "fallback", primaryGeneration, false);
     }
-    if (!fallbackAvailable) {
-      throw primaryError;
-    }
-    fallbackAttempted = true;
-    status.textContent = "代替データを読込中";
-    const fallbackTileset = await createPlateauTileset(config.fallbackTilesetUrl);
-    if (generation !== initialGeneration) {
-      destroyUnmountedTileset(fallbackTileset);
-      return;
-    }
-    mountTileset(fallbackTileset, "fallback", initialGeneration);
   }
+
+  // ---- 3D display settings -------------------------------------------------
+  const texturedTilesetAvailable =
+    config.texturedTilesetUrl.length > 0 && config.texturedTilesetUrl !== config.tilesetUrl;
+  const flatTerrain = new EllipsoidTerrainProvider();
+  let terrainFailureReported = false;
+  const gsiTerrain: TerrainProvider | null =
+    config.terrainFineUrl.length > 0
+      ? createGsiTerrainProvider({
+          coarseUrlTemplate: config.terrainCoarseUrl,
+          fineUrlTemplate: config.terrainFineUrl,
+          onTileFailure: () => {
+            if (!terrainFailureReported) {
+              terrainFailureReported = true;
+              displayStatus.textContent =
+                "標高タイルの一部を取得できませんでした。該当箇所は平らな地面で表示します。";
+            }
+          },
+        })
+      : null;
+  let orthoLayer: ImageryLayer | null = null;
+  if (config.orthoImageryUrl.length > 0) {
+    orthoLayer = createOrthoImageryLayer(config.orthoImageryUrl);
+    createdViewer.imageryLayers.add(orthoLayer);
+  }
+  const displaySettings: DisplaySettings = createDefaultDisplaySettings({
+    orthoImagery: orthoLayer !== null,
+    terrain: gsiTerrain !== null,
+    textures: texturedTilesetAvailable,
+  });
+
+  function applyDisplaySettings(): void {
+    const terrainEnabled = effectiveTerrain(displaySettings) && gsiTerrain !== null;
+    applySceneAppearance(createdViewer, {
+      lighting: effectiveLighting(displaySettings),
+      orthoLayer,
+      orthoVisible: displaySettings.orthoImagery,
+      terrainEnabled,
+      terrainProvider: terrainEnabled && gsiTerrain ? gsiTerrain : flatTerrain,
+    });
+  }
+
+  function syncDisplayControls(): void {
+    const in3d = displaySettings.sceneMode === "3d";
+    for (const radio of sceneModeRadios) {
+      radio.checked = radio.value === displaySettings.sceneMode;
+      radio.disabled = false;
+    }
+    orthoToggle.checked = displaySettings.orthoImagery;
+    orthoToggle.disabled = orthoLayer === null;
+    terrainToggle.checked = displaySettings.terrain;
+    terrainToggle.disabled = gsiTerrain === null || !in3d;
+    lightingToggle.checked = displaySettings.lighting;
+    lightingToggle.disabled = !in3d;
+    // After switching to the self-hosted fallback, only untextured tiles exist.
+    texturesToggle.checked = displaySettings.textures && !fallbackAttempted;
+    texturesToggle.disabled = !texturedTilesetAvailable || fallbackAttempted;
+    resetViewButton.disabled = false;
+  }
+
+  for (const radio of sceneModeRadios) {
+    radio.addEventListener("change", () => {
+      if (!radio.checked || !isSceneModeSetting(radio.value)) {
+        return;
+      }
+      displaySettings.sceneMode = radio.value;
+      // Drop terrain and lighting before entering 2D; restore them after 3D is ready.
+      if (radio.value === "2d") {
+        applyDisplaySettings();
+      }
+      syncDisplayControls();
+      morphSceneMode(createdViewer, radio.value, () => {
+        applyDisplaySettings();
+        persistViewState();
+      });
+    });
+  }
+  orthoToggle.addEventListener("change", () => {
+    displaySettings.orthoImagery = orthoToggle.checked;
+    applyDisplaySettings();
+  });
+  terrainToggle.addEventListener("change", () => {
+    displaySettings.terrain = terrainToggle.checked;
+    applyDisplaySettings();
+  });
+  lightingToggle.addEventListener("change", () => {
+    displaySettings.lighting = lightingToggle.checked;
+    applyDisplaySettings();
+  });
+  texturesToggle.addEventListener("change", () => {
+    displaySettings.textures = texturesToggle.checked;
+    void loadPrimaryTileset().catch((error: unknown) => {
+      console.error("3D Tiles failed to reload", error);
+      status.textContent = "3D Tiles 読込エラー";
+      status.dataset.result = "fail";
+    });
+  });
+  resetViewButton.addEventListener("click", () => {
+    resetCameraView(createdViewer);
+  });
+
+  applyDisplaySettings();
+  syncDisplayControls();
+  await loadPrimaryTileset();
 }
 
 start().catch((error: unknown) => {
