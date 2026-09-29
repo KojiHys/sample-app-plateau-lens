@@ -125,6 +125,39 @@ button {
   color: #f87171;
 }
 
+/* Cesiumのツールバー（ホーム・ヘルプ）の下に縦に並べる */
+.zoom-controls {
+  position: absolute;
+  top: 48px;
+  right: 5px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.zoom-controls button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #444;
+  border-radius: 14%;
+  color: #fff;
+  background: #303336;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.zoom-controls button:hover {
+  border-color: #aef;
+  background: #48b;
+}
+
+.zoom-controls button:focus-visible {
+  outline: 2px solid #aef;
+  outline-offset: 1px;
+}
+
 .popup {
   position: absolute;
   z-index: 3;

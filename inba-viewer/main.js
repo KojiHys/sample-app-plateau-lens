@@ -123,6 +123,53 @@ viewer.homeButton.viewModel.command.beforeExecute.addEventListener((event) => {
 });
 element("reset-view").addEventListener("click", () => flyHome());
 
+// ---- ズームボタン -------------------------------------------------------------
+
+// 1回の操作で画面中央の地点までの距離を半分（イン）または2倍（アウト）にする。
+const ZOOM_FACTOR = 2;
+const MIN_ZOOM_DISTANCE_METERS = 50;
+const MAX_CAMERA_HEIGHT_METERS = 300_000;
+
+function distanceToScreenCenter() {
+  const { camera, scene } = viewer;
+  const center = new Cesium.Cartesian2(scene.canvas.clientWidth / 2, scene.canvas.clientHeight / 2);
+  const ray = camera.getPickRay(center);
+  const ground = ray && scene.globe.pick(ray, scene);
+  if (ground) {
+    return Cesium.Cartesian3.distance(camera.position, ground);
+  }
+  // 画面中央に地表がない（空を向いている）場合はカメラ高度を目安にする
+  return Math.max(camera.positionCartographic.height, MIN_ZOOM_DISTANCE_METERS);
+}
+
+function zoom(direction) {
+  const { camera } = viewer;
+  camera.cancelFlight();
+  const distance = distanceToScreenCenter();
+  const nextDistance =
+    direction === "in"
+      ? Math.max(distance / ZOOM_FACTOR, MIN_ZOOM_DISTANCE_METERS)
+      : distance * ZOOM_FACTOR;
+  // 視線方向に沿って前後へ動かす。向き（heading/pitch/roll）は変えない。
+  const move = distance - nextDistance;
+  const destination = Cesium.Cartesian3.add(
+    camera.position,
+    Cesium.Cartesian3.multiplyByScalar(camera.direction, move, new Cesium.Cartesian3()),
+    new Cesium.Cartesian3(),
+  );
+  if (Cesium.Cartographic.fromCartesian(destination).height > MAX_CAMERA_HEIGHT_METERS) {
+    return;
+  }
+  camera.flyTo({
+    destination,
+    orientation: { heading: camera.heading, pitch: camera.pitch, roll: camera.roll },
+    duration: 0.4,
+  });
+}
+
+element("zoom-in").addEventListener("click", () => zoom("in"));
+element("zoom-out").addEventListener("click", () => zoom("out"));
+
 // ---- 1. 地形 ---------------------------------------------------------------
 
 const terrainToggle = element("toggle-terrain");
