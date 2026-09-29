@@ -10,6 +10,8 @@
     "assets:sync": "node scripts/sync-cesium-assets.mjs",
     "fallback:fetch": "node scripts/fetch-fallback-tiles.mjs",
     "secrets:scan": "bash scripts/scan-secrets.sh",
+    "inba:rivers": "node inba-viewer/scripts/convert-w05.mjs",
+    "inba:dev": "vite --config inba-viewer/vite.config.mjs",
     "predev": "npm run assets:sync",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",

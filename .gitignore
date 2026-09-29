@@ -12,3 +12,5 @@ semantic-review/
 !.env.example
 .DS_Store
 *.log
+# 国土数値情報W05（非商用）の変換結果は再配布しない
+inba-viewer/data/*.geojson

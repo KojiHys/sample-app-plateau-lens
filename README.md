@@ -328,6 +328,7 @@ lambda/          保存ビューAPI Lambda
 infrastructure/  AWS CDKスタック
 test/            VitestとPlaywrightテスト
 scripts/         Cesium資産同期、フォールバック取得
+inba-viewer/     印旛沼周辺の静的3Dビューア（PLATEAU Lensとは独立。inba-viewer/README.md）
 output/proposal/ 企画書と実装引き継ぎ書
 ```
 

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>印旛沼周辺 3Dビューア（非公式サンプル）</title>
+    <!-- CesiumJSはバージョン固定のCDNから読み込む。Workerや画像も同じベースURLから取得される。 -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css"
+      integrity="sha384-ghEeMdcWWzRv/BPeUcX835vcKDGrxvROXisl/Btpv3GeekBUXTSPVcFJpI1Tcrgp"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="./style.css" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"
+      integrity="sha384-D1oR8FyBDsJWkPeydGJTh8nJg5/++9sqchzJuu+oGQPmgbwu3aJmoVj3BTowr6t6"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div id="cesiumContainer" aria-label="印旛沼周辺の3D地図。ドラッグで移動、右ドラッグまたはCtrl+ドラッグでチルト、ホイールでズーム。"></div>
+
+    <aside id="panel" class="panel" aria-label="レイヤー設定">
+      <h1>印旛沼周辺 3Dビューア</h1>
+      <p class="subtitle">公的配信データのサンプル（非公式）</p>
+
+      <fieldset>
+        <legend>レイヤー</legend>
+        <label><input type="checkbox" id="toggle-terrain" checked /> 地形（PLATEAU-Terrain）</label>
+        <label><input type="checkbox" id="toggle-imagery" checked /> 背景画像（地理院タイル）</label>
+        <div class="indent" role="radiogroup" aria-label="背景画像の種類">
+          <label><input type="radio" name="imagery" value="photo" /> 航空写真</label>
+          <label><input type="radio" name="imagery" value="std" /> 標準地図</label>
+        </div>
+        <label><input type="checkbox" id="toggle-buildings" checked /> 3D建物（PLATEAU）</label>
+        <label><input type="checkbox" id="toggle-rivers" checked /> 河川ベクタ（国土数値情報）</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>河川の区間種別</legend>
+        <ul id="river-legend" class="legend"></ul>
+        <p class="note">太線は湖沼区間を兼ねる流路。印旛沼本体は「印旛水路」の湖沼区間として収録されています。</p>
+      </fieldset>
+
+      <button type="button" id="reset-view">初期視点に戻る</button>
+
+      <ul id="layer-status" class="status" aria-live="polite"></ul>
+    </aside>
+
+    <div class="zoom-controls" role="group" aria-label="ズーム">
+      <button type="button" id="zoom-in" title="ズームイン" aria-label="ズームイン">＋</button>
+      <button type="button" id="zoom-out" title="ズームアウト" aria-label="ズームアウト">－</button>
+    </div>
+
+    <section id="river-popup" class="popup" role="dialog" aria-labelledby="river-popup-title" hidden>
+      <header>
+        <h2 id="river-popup-title">河川属性</h2>
+        <button type="button" id="river-popup-close" aria-label="閉じる">×</button>
+      </header>
+      <dl id="river-popup-body"></dl>
+    </section>
+
+    <footer id="attribution" class="attribution" aria-label="出典">
+      <strong>出典</strong>
+      <ul id="attribution-list"></ul>
+    </footer>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
